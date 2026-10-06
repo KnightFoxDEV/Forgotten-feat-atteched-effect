@@ -295,7 +295,8 @@ public:
 	                            bool test = false);
 	ReturnValue internalAddItem(Cylinder* toCylinder, Item* item, int32_t index, uint32_t flags, bool test,
 	                            uint32_t& remainderCount);
-	ReturnValue internalRemoveItem(Item* item, int32_t count = -1, bool test = false, uint32_t flags = 0);
+	ReturnValue internalRemoveItem(Item* item, int32_t count = -1, bool test = false, uint32_t flags = 0,
+	                            Creature* actor = nullptr);
 
 	ReturnValue internalPlayerAddItem(Player* player, Item* item, bool dropOnMap = true,
 	                                  slots_t slot = CONST_SLOT_WHEREEVER);
@@ -443,9 +444,9 @@ public:
 	                        uint16_t spriteId);
 	void playerAcceptTrade(uint32_t playerId);
 	void playerLookInTrade(uint32_t playerId, bool lookAtCounterOffer, uint8_t index);
-	void playerPurchaseItem(uint32_t playerId, uint16_t spriteId, uint8_t count, uint8_t amount, bool ignoreCap = false,
+	void playerPurchaseItem(uint32_t playerId, uint16_t spriteId, uint8_t count, uint16_t amount, bool ignoreCap = false,
 	                        bool inBackpacks = false);
-	void playerSellItem(uint32_t playerId, uint16_t spriteId, uint8_t count, uint8_t amount,
+	void playerSellItem(uint32_t playerId, uint16_t spriteId, uint8_t count, uint16_t amount,
 	                    bool ignoreEquipped = false);
 	void playerCloseShop(uint32_t playerId);
 	void playerLookInShop(uint32_t playerId, uint16_t spriteId, uint8_t count);

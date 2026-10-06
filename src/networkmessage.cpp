@@ -48,7 +48,7 @@ void NetworkMessage::addString(std::string_view value)
 	}
 
 	const auto stringLen = simdutf::latin1_length_from_utf8(value.data(), value.size());
-	if (stringLen > 8192 || !canAdd(stringLen + sizeof(uint16_t))) {
+	if (stringLen > MAX_STRING_LENGTH || !canAdd(stringLen + sizeof(uint16_t))) {
 		add<uint16_t>(0);
 		return;
 	}
@@ -165,6 +165,8 @@ void NetworkMessage::addItem(uint16_t id, uint8_t count, bool sendTier, bool alw
                              bool sendAstraItemState, bool sendAstraQuiverCountU16, bool sendAstraItemMetadata,
                              bool sendContainerTypes, const Player* viewer)
 {
+	// Kept in the shared overload signature for legacy call-site compatibility;
+	// container state is encoded by sendContainerTypes below.
 	static_cast<void>(sendQuickLootFlags);
 	static_cast<void>(viewer);
 	addItemId(id);
@@ -201,6 +203,8 @@ void NetworkMessage::addItem(const Item* item, bool sendTier, bool alwaysSendTie
                              bool sendQuickLootFlags, bool sendAstraItemState, bool sendAstraQuiverCountU16,
                              bool sendAstraItemMetadata, bool sendContainerTypes, const Player* viewer)
 {
+	// Kept in the shared overload signature for legacy call-site compatibility;
+	// container state is encoded by sendContainerTypes below.
 	static_cast<void>(sendQuickLootFlags);
 	addItemId(item->getID());
 

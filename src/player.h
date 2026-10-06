@@ -25,6 +25,7 @@
 #include "kv/kv.h"
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <deque>
 #include <limits>
 #include <map>
@@ -172,6 +173,8 @@ inline constexpr int32_t PLAYER_MAX_BLESSINGS = 8;
 inline constexpr int32_t AVATAR_TIMER_STORAGE = 50099;
 inline constexpr int32_t AVATAR_DAMAGE_REDUCTION_PERCENT = 10;
 inline constexpr int32_t DUAL_WIELD_DAMAGE_BOOST_STORAGE = 50001;
+
+class Spell;
 
 class Player final : public Creature, public Cylinder
 {
@@ -484,6 +487,7 @@ public:
 	}
 
 	void sendMonkData();
+	void sendWheelFocusMasteryClientState(const std::string& state, uint32_t durationMs = 0);
 	void sendStanceProtocol() const;
 	std::vector<uint16_t> buildActiveStanceSpellIds() const;
 	Stance_t getStance() const { return m_stancePrimary; }
@@ -562,6 +566,19 @@ public:
 	void clearSpellAimPosition() { m_hasSpellAim = false; }
 	bool hasSpellAimPosition() const { return m_hasSpellAim; }
 	const Position& getSpellAimPosition() const { return m_spellAimPosition; }
+	void setSpellAimAtTargetEnabled(uint16_t spellId, uint8_t enabled)
+	{
+		if (enabled == 1) {
+			m_spellActivedAimMap[spellId] = 1;
+		} else {
+			m_spellActivedAimMap.erase(spellId);
+		}
+	}
+	bool isSpellAimAtTargetEnabled(uint16_t spellId) const
+	{
+		const auto it = m_spellActivedAimMap.find(spellId);
+		return it != m_spellActivedAimMap.end() && it->second == 1;
+	}
 	uint32_t getReset() const { return reset; }
 	void setReset(uint32_t newReset) { reset = newReset; }
 	uint8_t getLevelPercent() const { return levelPercent; }
@@ -928,6 +945,28 @@ public:
 	void addWheelMitigationMultiplier(float modifier) { varWheelMitigationMultiplier += modifier; }
 	float getWheelDodgeChance() const { return varWheelDodgeChance; }
 	void addWheelDodgeChance(float modifier) { varWheelDodgeChance += modifier; }
+	bool hasWheelBallisticMastery() const { return wheelBallisticMastery; }
+	void setWheelBallisticMastery(bool enabled) { wheelBallisticMastery = enabled; }
+	bool hasWheelGuidingPresence() const { return wheelGuidingPresence; }
+	void setWheelGuidingPresence(bool enabled) { wheelGuidingPresence = enabled; }
+	bool hasWheelSanctuary() const { return wheelSanctuary; }
+	void setWheelSanctuary(bool enabled);
+	void triggerWheelSanctuary(uint8_t harmonyConsumed, const Position& position);
+	void applyWheelSanctuaryCombatBonus(CombatDamage& damage, const Creature* target) const;
+	int32_t getWheelSanctuaryHealingBonusPercent(const Creature* healTarget) const;
+	int32_t getWheelBallisticMasteryCriticalBonus(CombatOrigin origin) const;
+	int32_t getWheelBallisticMasteryElementPierce(CombatType_t combatType) const;
+	bool hasWheelRunicMastery() const { return wheelRunicMastery; }
+	void setWheelRunicMastery(bool enabled) { wheelRunicMastery = enabled; }
+	void tryWheelRunicMastery(const Spell* runeSpell);
+	void clearWheelRunicMasteryBonus() { wheelRunicMasteryBonus = 0; }
+	int32_t getWheelRunicMasteryBonus() const { return wheelRunicMasteryBonus; }
+	bool hasWheelFocusMastery() const { return wheelFocusMastery; }
+	void setWheelFocusMastery(bool enabled);
+	void tryArmWheelFocusMastery(const Spell* spell);
+	void resetWheelFocusMasteryCastMultiplier() { wheelFocusMasteryCastMultiplier = 1.0f; }
+	float consumeWheelFocusMasteryForCast(const Spell* spell);
+	void applyWheelFocusMasteryCastMultiplier(CombatDamage& damage) const;
 
 	float getAttackFactor() const override;
 	float getDefenseFactor() const override;
@@ -1373,10 +1412,11 @@ public:
 			client->sendScreenshotAndBannerUpSkill(skill, newLevel);
 		}
 	}
-	void sendScreenshotAndBannerProgressRace(uint16_t raceId, uint8_t progressLevel, bool isBoss = false) const
+	void sendScreenshotAndBannerProgressRace(const BestiaryCreatureInfo& info, uint8_t progressLevel,
+	                                         bool isBoss = false) const
 	{
 		if (client) {
-			client->sendScreenshotAndBannerProgressRace(raceId, progressLevel, isBoss);
+			client->sendScreenshotAndBannerProgressRace(info, progressLevel, isBoss);
 		}
 	}
 	void sendEchoWardenReward(uint16_t raceId, uint32_t charmPoints) const
@@ -1583,6 +1623,8 @@ public:
 	bool isQuickLootAutoEnabled() const;
 	void ensureQuickLootStateLoaded();
 	void saveQuickLootState() const;
+	bool flushQuickLootPersistence(bool sync = false) const;
+	void scheduleQuickLootPersistence() const;
 	void setManagedLootContainer(ObjectCategory_t category, uint16_t containerId, uint64_t containerUid, bool isLootContainer);
 	void clearManagedLootContainer(ObjectCategory_t category, bool isLootContainer);
 	uint16_t getManagedLootContainerId(ObjectCategory_t category, bool isLootContainer) const;
@@ -1875,6 +1917,18 @@ private:
 	float varMitigation = 0.0f;
 	float varWheelMitigationMultiplier = 0.0f;
 	float varWheelDodgeChance = 0.0f;
+	bool wheelBallisticMastery = false;
+	bool wheelGuidingPresence = false;
+	bool wheelSanctuary = false;
+	uint8_t wheelSanctuaryBonusPercent = 0;
+	int64_t wheelSanctuaryExpireTime = 0;
+	Position wheelSanctuaryFieldPosition;
+	bool wheelRunicMastery = false;
+	int32_t wheelRunicMasteryBonus = 0;
+	bool wheelFocusMastery = false;
+	bool wheelFocusMasteryReady = false;
+	int64_t wheelFocusMasteryExpireTime = 0;
+	float wheelFocusMasteryCastMultiplier = 1.0f;
 	std::array<float, COMBAT_COUNT> varCombatAbsorbPercent = {0};
 	std::array<int16_t, COMBAT_COUNT> specialMagicLevelSkill = {0};
 	std::array<int32_t, static_cast<size_t>(ExperienceRateType::STAMINA) + 1> experienceRate = {0};
@@ -1890,6 +1944,10 @@ private:
 	QuickLootFilter_t quickLootFilter = QUICKLOOTFILTER_SKIPPEDLOOT;
 	bool quickLootFallbackToMainContainer = true;
 	bool quickLootStateLoaded = false;
+	mutable bool quickLootSaveDirty = false;
+	mutable uint64_t quickLootSaveGeneration = 0;
+	mutable uint32_t quickLootSaveEventId = 0;
+	mutable std::chrono::steady_clock::time_point lastQuickLootDbSave{};
 	int32_t temporaryDeathLossReduction = 0;
 
 	uint16_t lastStatsTrainingTime = 0;
@@ -1953,6 +2011,7 @@ private:
 	CombatType_t m_pendingElementConversion = COMBAT_NONE;
 	Position m_spellAimPosition;
 	bool m_hasSpellAim = false;
+	std::unordered_map<uint16_t, uint8_t> m_spellActivedAimMap;
 	bool loading = false;
 
 	AccountManagerMode accountManager{ACCOUNT_MANAGER_NONE};
@@ -2003,6 +2062,7 @@ private:
 	friend class ProtocolGame;
 	friend class ProtocolSpectator;
 	friend struct CreatureWalkTestAccess;
+	friend struct QuickLootTestAccess;
 };
 
 #endif

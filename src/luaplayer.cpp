@@ -996,6 +996,108 @@ int luaPlayerAddWheelDodgeChance(lua_State* L)
 	return 1;
 }
 
+int luaPlayerSetWheelBallisticMastery(lua_State* L)
+{
+	// player:setWheelBallisticMastery(enabled)
+	Player* player = getUserdata<Player>(L, 1);
+	if (!player) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	player->setWheelBallisticMastery(getBoolean(L, 2));
+	pushBoolean(L, true);
+	return 1;
+}
+
+int luaPlayerSetWheelGuidingPresence(lua_State* L)
+{
+	// player:setWheelGuidingPresence(enabled)
+	Player* player = getUserdata<Player>(L, 1);
+	if (!player) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	player->setWheelGuidingPresence(getBoolean(L, 2));
+	pushBoolean(L, true);
+	return 1;
+}
+
+int luaPlayerSetWheelSanctuary(lua_State* L)
+{
+	// player:setWheelSanctuary(enabled)
+	Player* player = getUserdata<Player>(L, 1);
+	if (!player) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	player->setWheelSanctuary(getBoolean(L, 2));
+	pushBoolean(L, true);
+	return 1;
+}
+
+int luaPlayerGetWheelSanctuaryHealingBonusPercent(lua_State* L)
+{
+	// player:getWheelSanctuaryHealingBonusPercent([target])
+	Player* player = getUserdata<Player>(L, 1);
+	if (!player) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	const Creature* target = nullptr;
+	if (lua_gettop(L) >= 2) {
+		target = getCreature(L, 2);
+	}
+
+	lua_pushinteger(L, player->getWheelSanctuaryHealingBonusPercent(target));
+	return 1;
+}
+
+int luaPlayerSetWheelRunicMastery(lua_State* L)
+{
+	// player:setWheelRunicMastery(enabled)
+	Player* player = getUserdata<Player>(L, 1);
+	if (!player) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	player->setWheelRunicMastery(getBoolean(L, 2));
+	player->clearWheelRunicMasteryBonus();
+	pushBoolean(L, true);
+	return 1;
+}
+
+int luaPlayerSetWheelFocusMastery(lua_State* L)
+{
+	// player:setWheelFocusMastery(enabled)
+	Player* player = getUserdata<Player>(L, 1);
+	if (!player) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	player->setWheelFocusMastery(getBoolean(L, 2));
+	pushBoolean(L, true);
+	return 1;
+}
+
+int luaPlayerHasWheelFocusMastery(lua_State* L)
+{
+	// player:hasWheelFocusMastery()
+	const Player* player = getUserdata<const Player>(L, 1);
+	if (!player) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	pushBoolean(L, player->hasWheelFocusMastery());
+	return 1;
+}
+
 int luaPlayerGetItemCount(lua_State* L)
 {
 	// player:getItemCount(itemId[, subType = -1[, ignoreEquipped = false]])
@@ -2030,7 +2132,11 @@ int luaPlayerAddItemEx(lua_State* L)
 	} else {
 		int32_t index = getInteger<int32_t>(L, 4, INDEX_WHEREEVER);
 		uint32_t flags = getInteger<uint32_t>(L, 5, 0);
-		returnValue = g_game.internalAddItem(player, item, index, flags);
+		if (index == INDEX_WHEREEVER && flags == 0) {
+			returnValue = g_game.internalPlayerAddItem(player, item, false, CONST_SLOT_WHEREEVER);
+		} else {
+			returnValue = g_game.internalAddItem(player, item, index, flags);
+		}
 	}
 
 	if (returnValue == RETURNVALUE_NOERROR) {
@@ -2220,6 +2326,31 @@ int luaPlayerSendBannerType(lua_State* L)
 	}
 
 	player->sendBannerType(getInteger<Banner_t>(L, 2));
+	pushBoolean(L, true);
+	return 1;
+}
+
+int luaPlayerSendBestiaryBanner(lua_State* L)
+{
+	// player:sendBestiaryBanner(raceId, progressLevel, name, outfit[, isBoss])
+	const Player* player = getUserdata<const Player>(L, 1);
+	if (!player) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	const Outfit_t outfit = getOutfit(L, 5);
+	BestiaryCreatureInfo info;
+	info.raceId = getInteger<uint16_t>(L, 2);
+	info.name = getString(L, 4);
+	info.lookType = outfit.lookType;
+	info.lookTypeEx = outfit.lookTypeEx;
+	info.lookHead = outfit.lookHead;
+	info.lookBody = outfit.lookBody;
+	info.lookLegs = outfit.lookLegs;
+	info.lookFeet = outfit.lookFeet;
+	info.lookAddons = outfit.lookAddons;
+	player->sendScreenshotAndBannerProgressRace(info, getInteger<uint8_t>(L, 3), getBoolean(L, 6, false));
 	pushBoolean(L, true);
 	return 1;
 }
@@ -4877,6 +5008,13 @@ void LuaScriptInterface::registerPlayer()
 	registerMethod("Player", "addMitigation", luaPlayerAddMitigation);
 	registerMethod("Player", "addWheelMitigationMultiplier", luaPlayerAddWheelMitigationMultiplier);
 	registerMethod("Player", "addWheelDodgeChance", luaPlayerAddWheelDodgeChance);
+	registerMethod("Player", "setWheelBallisticMastery", luaPlayerSetWheelBallisticMastery);
+	registerMethod("Player", "setWheelGuidingPresence", luaPlayerSetWheelGuidingPresence);
+	registerMethod("Player", "setWheelSanctuary", luaPlayerSetWheelSanctuary);
+	registerMethod("Player", "getWheelSanctuaryHealingBonusPercent", luaPlayerGetWheelSanctuaryHealingBonusPercent);
+	registerMethod("Player", "setWheelRunicMastery", luaPlayerSetWheelRunicMastery);
+	registerMethod("Player", "setWheelFocusMastery", luaPlayerSetWheelFocusMastery);
+	registerMethod("Player", "hasWheelFocusMastery", luaPlayerHasWheelFocusMastery);
 
 	registerMethod("Player", "getItemCount", luaPlayerGetItemCount);
 	registerMethod("Player", "getItemById", luaPlayerGetItemById);
@@ -4963,6 +5101,7 @@ void LuaScriptInterface::registerPlayer()
 
 	registerMethod("Player", "sendTextMessage", luaPlayerSendTextMessage);
 	registerMethod("Player", "sendBannerType", luaPlayerSendBannerType);
+	registerMethod("Player", "sendBestiaryBanner", luaPlayerSendBestiaryBanner);
 	registerMethod("Player", "sendStats", luaPlayerSendStats);
 	registerMethod("Player", "sendSkills", luaPlayerSendSkills);
 	registerMethod("Player", "sendItemValues", luaPlayerSendItemValues);

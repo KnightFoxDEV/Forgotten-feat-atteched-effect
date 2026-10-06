@@ -25,12 +25,19 @@ class Item;
 class Tile;
 class Connection;
 class ProtocolGame;
+struct BestiaryCreatureInfo;
 struct ProtocolGameCustomPingTestAccess;
 struct ProtocolGameAstraRegenerationTestAccess;
+struct ProtocolGameSpellCooldownTestAccess;
 using ProtocolGame_ptr = std::shared_ptr<ProtocolGame>;
 class ProtocolSpectator;
 
 extern Game g_game;
+
+namespace BestiaryNotificationProtocol {
+bool writeProgress(NetworkMessage& msg, const BestiaryCreatureInfo& info, uint8_t progressLevel, bool isBoss,
+                   bool includeCreatureData);
+}
 
 struct TextMessage
 {
@@ -118,6 +125,7 @@ private:
 	void parseInspectionObject(NetworkMessage& msg);
 	void parseSetMonsterPodium(NetworkMessage& msg);
 	void parseSay(NetworkMessage& msg);
+	void parseSelectSpellAim(NetworkMessage& msg);
 	void parseLookAt(NetworkMessage& msg);
 	void parseLookInBattleList(NetworkMessage& msg);
 	void parseAttack(NetworkMessage& msg);
@@ -260,7 +268,8 @@ private:
 	void sendScreenshotAndBannerUnlockedCosmetic(std::string_view skinName, uint16_t lookType, uint8_t skinType);
 	void sendScreenshotAndBannerUpLevel(uint16_t level);
 	void sendScreenshotAndBannerUpSkill(skills_t skill, uint16_t level);
-	void sendScreenshotAndBannerProgressRace(uint16_t raceId, uint8_t progressLevel, bool isBoss = false);
+	void sendScreenshotAndBannerProgressRace(const BestiaryCreatureInfo& info, uint8_t progressLevel,
+	                                         bool isBoss = false);
 	void sendEchoWardenReward(uint16_t raceId, uint32_t charmPoints);
 	void sendExtendedOpcode(uint8_t opcode, std::string_view data);
 	void sendBlessingWindow();
@@ -365,6 +374,8 @@ private:
 	bool shouldSendItemTierByte() const;
 	bool shouldSendThingUpgradeClassification() const;
 	bool shouldSendItemTierData() const;
+	bool usesExtendedSpellIds() const;
+	bool usesExtendedSpellCooldownIds() const;
 	void sendNewPing(uint32_t pingId);
 	void parseNewPing(NetworkMessage& msg);
 	void parseCustomClientPing(NetworkMessage& msg);
@@ -388,6 +399,7 @@ private:
 	friend class SpySystem;
 	friend struct ProtocolGameCustomPingTestAccess;
 	friend struct ProtocolGameAstraRegenerationTestAccess;
+	friend struct ProtocolGameSpellCooldownTestAccess;
 
 	//cast
 	void spectatorTurn(uint8_t direction);
@@ -448,6 +460,9 @@ private:
 	bool supportsAstraSingleCreatureMarks = false;
 	bool supportsAstraEchoRaidVisuals = false;
 	bool supportsAstraStoreBasePrice = false;
+	bool supportsAstraStoreCatalogChunks = false;
+	bool supportsAstraBestiaryBannerCreatureData = false;
+	bool supportsAstraExtendedSpellIds = false;
 	bool supportsZoneWeather = false;
 	bool supportsDllZoneWeather = false;
 	bool zoneWeatherFeatureEnabled = false;

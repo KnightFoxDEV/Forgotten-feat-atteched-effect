@@ -13,6 +13,7 @@
 #include "events.h"
 #include "familiar.h"
 #include "game.h"
+#include "party.h"
 #include "house.h"
 #include "iologindata.h"
 #include "instance_utils.h"
@@ -23,9 +24,12 @@
 #include "npc.h"
 #include "party.h"
 #include "rewardchest.h"
+#include "databasetasks.h"
 #include "save_manager.h"
 #include "scriptmanager.h"
 #include "scheduler.h"
+#include "spells.h"
+#include "vocation.h"
 #include "logger.h"
 #include <fmt/format.h>
 #include <cstdlib>
@@ -34,6 +38,8 @@
 
 extern Game g_game;
 extern Vocations g_vocations;
+extern DatabaseTasks g_databaseTasks;
+extern std::unique_ptr<Spells> g_spells;
 
 namespace {
 constexpr uint32_t CHAIN_SYSTEM_STORAGE = 40001;
@@ -759,6 +765,168 @@ int32_t Player::getWheelSpellAdditionalDuration(std::string_view spellName) cons
 	return getWheelSpellAugmentBonus(spellName).additionalDuration;
 }
 
+int32_t Player::getWheelBallisticMasteryCriticalBonus(CombatOrigin origin) const
+{
+	if (!wheelBallisticMastery || origin != ORIGIN_RANGED) {
+		return 0;
+	}
+
+	const Item* weapon = getWeapon(true);
+	if (!weapon || weapon->getWeaponType() != WEAPON_DISTANCE) {
+		return 0;
+	}
+
+	return Item::items[weapon->getID()].ammoType == AMMO_BOLT ? 1000 : 0;
+}
+
+int32_t Player::getWheelBallisticMasteryElementPierce(CombatType_t combatType) const
+{
+	if (!wheelBallisticMastery || (combatType != COMBAT_PHYSICALDAMAGE && combatType != COMBAT_HOLYDAMAGE)) {
+		return 0;
+	}
+
+	const Item* weapon = getWeapon(true);
+	if (!weapon || weapon->getWeaponType() != WEAPON_DISTANCE) {
+		return 0;
+	}
+
+	return Item::items[weapon->getID()].ammoType == AMMO_ARROW ? 2 : 0;
+}
+
+namespace {
+
+bool canPlayerVocationCreateRune(const Player* player, const Spell* runeSpell)
+{
+	if (!player || !runeSpell || !g_spells) {
+		return false;
+	}
+
+	const InstantSpell* conjureSpell = g_spells->getInstantSpellByName(runeSpell->getName());
+	if (!conjureSpell) {
+		return false;
+	}
+
+	const auto& vocMap = conjureSpell->getVocationSpellMap();
+	if (vocMap.empty()) {
+		return false;
+	}
+
+	const auto vocationMatches = [&vocMap](uint16_t vocationId) {
+		return vocMap.find(vocationId) != vocMap.end();
+	};
+
+	const uint16_t playerVocationId = player->getVocationId();
+	if (vocationMatches(playerVocationId)) {
+		return true;
+	}
+
+	if (const Vocation* vocation = g_vocations.getVocation(playerVocationId)) {
+		const uint32_t fromVocation = vocation->getFromVocation();
+		if (fromVocation != 0 && vocationMatches(static_cast<uint16_t>(fromVocation))) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+} // namespace
+
+void Player::tryWheelRunicMastery(const Spell* runeSpell)
+{
+	wheelRunicMasteryBonus = 0;
+	if (!wheelRunicMastery || !runeSpell || !ConfigManager::getBoolean(ConfigManager::WHEEL_SYSTEM_ENABLED)) {
+		return;
+	}
+
+	if (uniform_random(1, 100) > 25) {
+		return;
+	}
+
+	const uint8_t percent = canPlayerVocationCreateRune(this, runeSpell) ? 20 : 10;
+	const int32_t baseMagicLevel = static_cast<int32_t>(magLevel);
+	wheelRunicMasteryBonus = (baseMagicLevel * static_cast<int32_t>(percent)) / 100;
+	if (wheelRunicMasteryBonus <= 0 && baseMagicLevel > 0) {
+		wheelRunicMasteryBonus = 1;
+	}
+
+	if (wheelRunicMasteryBonus > 0) {
+		sendTextMessage(MESSAGE_STATUS_SMALL, "(Runic Mastery)");
+	}
+}
+
+void Player::setWheelFocusMastery(bool enabled)
+{
+	wheelFocusMastery = enabled;
+	if (!enabled) {
+		wheelFocusMasteryReady = false;
+		wheelFocusMasteryExpireTime = 0;
+		wheelFocusMasteryCastMultiplier = 1.0f;
+		sendWheelFocusMasteryClientState("idle", 0);
+	}
+}
+
+void Player::tryArmWheelFocusMastery(const Spell* spell)
+{
+	if (!wheelFocusMastery || !spell || !ConfigManager::getBoolean(ConfigManager::WHEEL_SYSTEM_ENABLED)) {
+		return;
+	}
+
+	if (spell->getAggressive()) {
+		return;
+	}
+
+	if (spell->getGroup() != SPELLGROUP_FOCUS && spell->getSecondaryGroup() != SPELLGROUP_FOCUS) {
+		return;
+	}
+
+	wheelFocusMasteryReady = true;
+	wheelFocusMasteryExpireTime = OTSYS_TIME() + 12000;
+	sendWheelFocusMasteryClientState("armed", 12000);
+}
+
+void Player::applyWheelFocusMasteryCastMultiplier(CombatDamage& damage) const
+{
+	if (wheelFocusMasteryCastMultiplier <= 1.0f || damage.primary.type == COMBAT_HEALING || damage.primary.value >= 0) {
+		return;
+	}
+
+	damage.primary.value = static_cast<int32_t>(
+	    std::lround(static_cast<double>(damage.primary.value) * wheelFocusMasteryCastMultiplier));
+	if (damage.secondary.value != 0) {
+		damage.secondary.value = static_cast<int32_t>(
+		    std::lround(static_cast<double>(damage.secondary.value) * wheelFocusMasteryCastMultiplier));
+	}
+}
+
+float Player::consumeWheelFocusMasteryForCast(const Spell* spell)
+{
+	if (wheelFocusMasteryCastMultiplier > 1.0f) {
+		return wheelFocusMasteryCastMultiplier;
+	}
+
+	if (!wheelFocusMastery || !wheelFocusMasteryReady || !spell ||
+	    !ConfigManager::getBoolean(ConfigManager::WHEEL_SYSTEM_ENABLED)) {
+		return 1.0f;
+	}
+
+	if (OTSYS_TIME() > wheelFocusMasteryExpireTime) {
+		wheelFocusMasteryReady = false;
+		sendWheelFocusMasteryClientState("expired", 0);
+		return 1.0f;
+	}
+
+	if (!spell->getAggressive()) {
+		return 1.0f;
+	}
+
+	wheelFocusMasteryReady = false;
+	wheelFocusMasteryCastMultiplier = 1.35f;
+	sendTextMessage(MESSAGE_STATUS_SMALL, "(Focus Mastery)");
+	sendWheelFocusMasteryClientState("consumed", 0);
+	return wheelFocusMasteryCastMultiplier;
+}
+
 bool Player::hasInventoryItem(slots_t slot, const std::shared_ptr<const Item>& item) const
 {
 	if (!item || slot < CONST_SLOT_FIRST || slot > CONST_SLOT_LAST) {
@@ -863,6 +1031,15 @@ void Player::sendMonkData()
 		static_cast<uint8_t>(m_stanceElemental)
 	);
 	client->sendExtendedOpcode(0x92, json);
+}
+
+void Player::sendWheelFocusMasteryClientState(const std::string& state, uint32_t durationMs)
+{
+	if (!client || !client->isFonticakClient) {
+		return;
+	}
+	std::string json = fmt::format("{{\"state\":\"{}\",\"duration\":{}}}", state, durationMs);
+	client->sendExtendedOpcode(0x93, json);
 }
 
 void Player::updateKillTracker(const std::shared_ptr<Monster>& monster, const std::shared_ptr<Container>& corpse) const
@@ -1287,7 +1464,138 @@ int32_t Player::getMantraTotal() const
 	if (isSerene()) {
 		mantraTotal *= 2;
 	}
+
+	const Party* party = getParty();
+	if (!party) {
+		return mantraTotal;
+	}
+
+	const Position& myPos = getPosition();
+	auto addGuidingPresenceShare = [&](const Player* source) {
+		if (!source || source == this || !source->hasWheelGuidingPresence()) {
+			return;
+		}
+		if (!myPos.isInRange(source->getPosition(), 30, 30, 1)) {
+			return;
+		}
+
+		int32_t sourceMantra = 0;
+		for (const slots_t& slot : mantraSlots) {
+			if (!source->isItemAbilityEnabled(slot)) {
+				continue;
+			}
+			std::shared_ptr<Item> item = source->inventory[slot];
+			if (!item) {
+				continue;
+			}
+			const ItemType& itemType = Item::items[item->getID()];
+			sourceMantra += getItemTypeMantraValue(itemType, COMBAT_ENERGYDAMAGE);
+		}
+		if (source->isSerene()) {
+			sourceMantra *= 2;
+		}
+		mantraTotal += sourceMantra / 2;
+	};
+
+	if (const std::shared_ptr<Player> leader = party->getLeader()) {
+		addGuidingPresenceShare(leader.get());
+	}
+	for (const auto& memberWeak : party->getMembers()) {
+		if (const std::shared_ptr<Player> member = memberWeak.lock()) {
+			addGuidingPresenceShare(member.get());
+		}
+	}
+
 	return mantraTotal;
+}
+
+namespace {
+
+bool isWheelSanctuaryAdjacent(const Position& a, const Position& b)
+{
+	if (a.z != b.z) {
+		return false;
+	}
+	return a.isInRange(b, 1, 1, 0) && a != b;
+}
+
+} // namespace
+
+void Player::setWheelSanctuary(bool enabled)
+{
+	wheelSanctuary = enabled;
+	if (!enabled) {
+		wheelSanctuaryBonusPercent = 0;
+		wheelSanctuaryExpireTime = 0;
+	}
+}
+
+void Player::triggerWheelSanctuary(uint8_t harmonyConsumed, const Position& position)
+{
+	if (!wheelSanctuary || harmonyConsumed == 0 ||
+	    !ConfigManager::getBoolean(ConfigManager::WHEEL_SYSTEM_ENABLED)) {
+		return;
+	}
+
+	wheelSanctuaryBonusPercent = static_cast<uint8_t>(std::min<int>(harmonyConsumed * 2, 100));
+	wheelSanctuaryExpireTime = OTSYS_TIME() + 5000;
+	wheelSanctuaryFieldPosition = position;
+	g_game.addMagicEffect(position, CONST_ME_MAGIC_GREEN);
+}
+
+int32_t Player::getWheelSanctuaryHealingBonusPercent(const Creature* healTarget) const
+{
+	if (!wheelSanctuary || wheelSanctuaryBonusPercent == 0 || OTSYS_TIME() > wheelSanctuaryExpireTime) {
+		return 0;
+	}
+
+	if (!getPosition().isInRange(wheelSanctuaryFieldPosition, 1, 1, 0)) {
+		return 0;
+	}
+
+	int32_t bonus = wheelSanctuaryBonusPercent;
+	if (healTarget && healTarget->getPlayer() && isWheelSanctuaryAdjacent(getPosition(), healTarget->getPosition())) {
+		bonus += 10;
+	}
+	return bonus;
+}
+
+void Player::applyWheelSanctuaryCombatBonus(CombatDamage& damage, const Creature* target) const
+{
+	if (damage.primary.type == COMBAT_HEALING) {
+		const int32_t bonus = getWheelSanctuaryHealingBonusPercent(target);
+		if (bonus <= 0) {
+			return;
+		}
+		const double multiplier = 1.0 + (bonus / 100.0);
+		damage.primary.value =
+		    static_cast<int32_t>(std::lround(static_cast<double>(damage.primary.value) * multiplier));
+		if (damage.secondary.value != 0) {
+			damage.secondary.value =
+			    static_cast<int32_t>(std::lround(static_cast<double>(damage.secondary.value) * multiplier));
+		}
+		return;
+	}
+
+	if (!wheelSanctuary || wheelSanctuaryBonusPercent == 0 || OTSYS_TIME() > wheelSanctuaryExpireTime) {
+		return;
+	}
+
+	if (!getPosition().isInRange(wheelSanctuaryFieldPosition, 1, 1, 0)) {
+		return;
+	}
+
+	int32_t bonus = wheelSanctuaryBonusPercent;
+	if (target && target != this && isWheelSanctuaryAdjacent(getPosition(), target->getPosition())) {
+		bonus += 10;
+	}
+
+	const double multiplier = 1.0 + (bonus / 100.0);
+	damage.primary.value = static_cast<int32_t>(std::lround(static_cast<double>(damage.primary.value) * multiplier));
+	if (damage.secondary.value != 0) {
+		damage.secondary.value =
+		    static_cast<int32_t>(std::lround(static_cast<double>(damage.secondary.value) * multiplier));
+	}
 }
 
 int16_t Player::getMantraAbsorbPercent(int32_t mantraTotal) const
@@ -2874,6 +3182,17 @@ void Player::onRemoveCreature(Creature* creature, bool isLogout)
 
 		Familiar::onPlayerLogout(this);
 
+		bool quickLootPersisted = false;
+		for (uint32_t tries = 0; tries < 3; ++tries) {
+			if (flushQuickLootPersistence(true)) {
+				quickLootPersisted = true;
+				break;
+			}
+		}
+		if (!quickLootPersisted && quickLootSaveDirty) {
+			LOG_ERROR(fmt::format("[QuickLoot] Failed to persist settings on logout for player {}", getName()));
+		}
+
 		bool saved = false;
 		for (uint32_t tries = 0; tries < 3; ++tries) {
 			if (g_saveManager.savePlayerSync(this)) {
@@ -3058,7 +3377,7 @@ void Player::onSendContainer(const Container* container)
 		return;
 	}
 
-	bool hasParent = dynamic_cast<const Container*>(container->getParent()) != nullptr;
+	bool hasParent = containerHasParent(container, this);
 	for (auto it = openContainers.begin(); it != openContainers.end();) {
 		OpenContainer& openContainer = it->second;
 		auto openContainerRef = openContainer.container.lock();
@@ -4146,6 +4465,9 @@ std::shared_ptr<Item> Player::getCorpse(Creature* lastHitCreature, Creature* mos
 {
 	auto corpse = Creature::getCorpse(lastHitCreature, mostDamageCreature);
 	if (corpse && corpse->getContainer()) {
+		// Player corpses use the normal container format but must never enter
+		// the monster Quick Loot flow.
+		corpse->setCustomAttribute("QuickLootDisabled", true);
 		size_t killersSize = getKillers().size();
 
 		if (lastHitCreature) {
@@ -6116,12 +6438,9 @@ bool Player::getOutfitAddons(const Outfit& outfit, uint8_t& addons) const
 		return false;
 	}
 
-	for (const auto& [lookType, addon] : outfits) {
-		if (lookType != outfit.lookType) {
-			continue;
-		}
-
-		addons = addon;
+	const auto it = outfits.find(outfit.lookType);
+	if (it != outfits.end()) {
+		addons = it->second;
 		return true;
 	}
 
@@ -7611,7 +7930,7 @@ namespace {
 bool isValidQuickLootCategory(ObjectCategory_t category)
 {
 	const uint8_t value = static_cast<uint8_t>(category);
-	return value >= OBJECTCATEGORY_FIRST && value <= OBJECTCATEGORY_LAST && value != 26;
+	return value >= OBJECTCATEGORY_FIRST && value <= OBJECTCATEGORY_LAST;
 }
 
 std::shared_ptr<KV> getPlayerQuickLootKV(uint32_t guid)
@@ -7672,11 +7991,46 @@ Container* findHeldContainerByIdentity(Container* parent, uint16_t itemId, uint6
 	return nullptr;
 }
 
+constexpr uint32_t QUICK_LOOT_SAVE_DEBOUNCE_MS = 250;
+constexpr uint32_t QUICK_LOOT_SAVE_MIN_INTERVAL_MS = 500;
+
+void persistPlayerQuickLootValue(uint32_t guid, const std::string& key, const ValueWrapper& value)
+{
+	getPlayerQuickLootKV(guid)->set(key, value);
+}
+
+MapType serializeManagedLootContainers(const Player& player)
+{
+	MapType serializedContainers;
+	for (const auto& [category, containers] : player.getManagedLootContainers()) {
+		if (containers.loot == 0 && containers.obtain == 0) {
+			continue;
+		}
+
+		MapType entry;
+		entry.emplace("loot", std::make_shared<ValueWrapper>(static_cast<int32_t>(containers.loot)));
+		entry.emplace("obtain", std::make_shared<ValueWrapper>(static_cast<int32_t>(containers.obtain)));
+		entry.emplace("lootUid", std::make_shared<ValueWrapper>(std::to_string(containers.lootUid)));
+		entry.emplace("obtainUid", std::make_shared<ValueWrapper>(std::to_string(containers.obtainUid)));
+		serializedContainers.emplace(std::to_string(static_cast<uint8_t>(category)), std::make_shared<ValueWrapper>(entry));
+	}
+	return serializedContainers;
+}
+
+std::vector<std::pair<std::string, ValueWrapper>> buildQuickLootPersistenceSnapshot(const Player& player)
+{
+	const std::string prefix = fmt::format("player.{}.quickloot", player.getGUID());
+	return {
+	    {prefix + ".managedContainers", ValueWrapper(serializeManagedLootContainers(player))},
+	    {prefix + ".fallback", ValueWrapper(player.getQuickLootFallbackToMainContainer())},
+	};
+}
+
 } // namespace
 
 void Player::sendLootContainers() const
 {
-	if (client && isAstraClient()) {
+	if (client && (isAstraClient() || isFonticakClient())) {
 		client->sendLootContainers();
 	}
 }
@@ -7765,24 +8119,139 @@ void Player::ensureQuickLootStateLoaded()
 
 void Player::saveQuickLootState() const
 {
-	auto store = getPlayerQuickLootKV(getGUID());
+	const uint32_t guid = getGUID();
+	persistPlayerQuickLootValue(guid, "managedContainers", ValueWrapper(serializeManagedLootContainers(*this)));
+	persistPlayerQuickLootValue(guid, "fallback", ValueWrapper(quickLootFallbackToMainContainer));
+	++quickLootSaveGeneration;
+	quickLootSaveDirty = true;
+	scheduleQuickLootPersistence();
+}
 
-	MapType serializedContainers;
-	for (const auto& [category, containers] : managedLootContainers) {
-		if (containers.loot == 0 && containers.obtain == 0) {
-			continue;
-		}
-
-		MapType entry;
-		entry.emplace("loot", std::make_shared<ValueWrapper>(static_cast<int32_t>(containers.loot)));
-		entry.emplace("obtain", std::make_shared<ValueWrapper>(static_cast<int32_t>(containers.obtain)));
-		entry.emplace("lootUid", std::make_shared<ValueWrapper>(std::to_string(containers.lootUid)));
-		entry.emplace("obtainUid", std::make_shared<ValueWrapper>(std::to_string(containers.obtainUid)));
-		serializedContainers.emplace(std::to_string(static_cast<uint8_t>(category)), std::make_shared<ValueWrapper>(entry));
+void Player::scheduleQuickLootPersistence() const
+{
+	if (quickLootSaveEventId != 0) {
+		g_scheduler.stopEvent(quickLootSaveEventId);
+		quickLootSaveEventId = 0;
 	}
 
-	store->set("managedContainers", ValueWrapper(serializedContainers));
-	store->set("fallback", ValueWrapper(quickLootFallbackToMainContainer));
+	const uint32_t playerId = getID();
+	quickLootSaveEventId = g_scheduler.addEvent(QUICK_LOOT_SAVE_DEBOUNCE_MS, [playerId]() {
+		auto playerRef = g_game.getPlayerByID(playerId);
+		Player* scheduledPlayer = playerRef.get();
+		if (!scheduledPlayer) {
+			return;
+		}
+
+		scheduledPlayer->quickLootSaveEventId = 0;
+		const auto now = std::chrono::steady_clock::now();
+		const auto elapsed =
+		    std::chrono::duration_cast<std::chrono::milliseconds>(now - scheduledPlayer->lastQuickLootDbSave);
+		if (elapsed.count() < QUICK_LOOT_SAVE_MIN_INTERVAL_MS) {
+			const uint32_t delay = static_cast<uint32_t>(QUICK_LOOT_SAVE_MIN_INTERVAL_MS - elapsed.count());
+			scheduledPlayer->quickLootSaveEventId = g_scheduler.addEvent(delay, [playerId]() {
+				auto retryRef = g_game.getPlayerByID(playerId);
+				Player* retryPlayer = retryRef.get();
+				if (retryPlayer) {
+					retryPlayer->flushQuickLootPersistence(false);
+				}
+			});
+			return;
+		}
+
+		scheduledPlayer->flushQuickLootPersistence(false);
+	});
+}
+
+bool Player::flushQuickLootPersistence(bool sync) const
+{
+	if (quickLootSaveEventId != 0) {
+		g_scheduler.stopEvent(quickLootSaveEventId);
+		quickLootSaveEventId = 0;
+	}
+
+	if (!quickLootSaveDirty) {
+		return true;
+	}
+
+	const uint32_t playerId = getID();
+
+	if (sync) {
+		g_databaseTasks.flush();
+		static constexpr uint32_t kSyncSaveAttempts = 3;
+		for (uint32_t attempt = 0; attempt < kSyncSaveAttempts; ++attempt) {
+			if (attempt > 0) {
+				g_databaseTasks.flush();
+			}
+			if (!quickLootSaveDirty) {
+				return true;
+			}
+
+			const uint64_t flushGeneration = quickLootSaveGeneration;
+			const auto snapshot = buildQuickLootPersistenceSnapshot(*this);
+			std::string query;
+			if (!KVStore::getInstance().buildBatchSaveQuery(snapshot, query)) {
+				continue;
+			}
+
+			if (query.empty()) {
+				if (quickLootSaveGeneration == flushGeneration) {
+					quickLootSaveDirty = false;
+					return true;
+				}
+				continue;
+			}
+
+			if (Database::getInstance().executeQuery(query)) {
+				lastQuickLootDbSave = std::chrono::steady_clock::now();
+				if (quickLootSaveGeneration == flushGeneration) {
+					quickLootSaveDirty = false;
+					return true;
+				}
+				continue;
+			}
+		}
+		LOG_ERROR(fmt::format("[QuickLoot] Synchronous persistence failed for player id {}", playerId));
+		return false;
+	}
+
+	const uint64_t flushGeneration = quickLootSaveGeneration;
+	const auto snapshot = buildQuickLootPersistenceSnapshot(*this);
+	std::string query;
+	if (!KVStore::getInstance().buildBatchSaveQuery(snapshot, query)) {
+		scheduleQuickLootPersistence();
+		return false;
+	}
+
+	if (query.empty()) {
+		if (quickLootSaveGeneration == flushGeneration) {
+			quickLootSaveDirty = false;
+		} else {
+			scheduleQuickLootPersistence();
+		}
+		return true;
+	}
+
+	if (!g_databaseTasks.addTask(std::move(query), [playerId, flushGeneration](DBResult_ptr, bool success, uint64_t) {
+		    auto playerRef = g_game.getPlayerByID(playerId);
+		    Player* player = playerRef.get();
+		    if (!player) {
+			    return;
+		    }
+		    if (!success) {
+			    player->scheduleQuickLootPersistence();
+			    return;
+		    }
+		    player->lastQuickLootDbSave = std::chrono::steady_clock::now();
+		    if (player->quickLootSaveGeneration == flushGeneration) {
+			    player->quickLootSaveDirty = false;
+		    } else {
+			    player->scheduleQuickLootPersistence();
+		    }
+	    })) {
+		scheduleQuickLootPersistence();
+		return false;
+	}
+	return true;
 }
 
 void Player::setManagedLootContainer(ObjectCategory_t category, uint16_t containerId, uint64_t containerUid, bool isLootContainer)

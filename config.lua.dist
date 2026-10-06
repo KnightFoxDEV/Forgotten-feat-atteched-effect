@@ -175,7 +175,10 @@ battlePassRewardMaxStep = 50
 -- Level that must be completed before the Battle Pass shop is unlocked.
 -- Must be between 1 and battlePassRewardMaxStep.
 battlePassShopUnlockStep = 50
+-- Weapon Proficiency grants experience to the equipped weapon based on a share of kill experience.
+-- The default multiplier is 0.01 (1% of kill experience); adjust to control proficiency progression speed.
 weaponProficiencySystemEnabled = false
+weaponProficiencyExperienceGainMultiplier = 0.01
 augmentSystemEnabled = false
 monsterLevelEnabled = false
 monsterFactionSystem = false
@@ -185,6 +188,8 @@ enableColorizedLootValue = false
 enableItemTierDisplay = false
 enableItemUpgradeClassification = false
 enableQuickLoot = true
+-- Allow ordinary bosses to use automatic quick loot. Reward bosses remain excluded.
+quickLootAllowOrdinaryBosses = true
 quickLootMaxCorpses = 30
 
 -- Allow the /reload command (god only). Set false to disable it.
