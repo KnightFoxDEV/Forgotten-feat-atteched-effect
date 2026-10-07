@@ -18,6 +18,8 @@
 #include "instance_utils.h"
 #include "tools.h"
 
+#include <algorithm>
+
 extern Game g_game;
 
 namespace {
@@ -28,6 +30,31 @@ std::shared_ptr<Creature> getSharedCreature(Creature* creature)
 }
 
 } // namespace
+
+void Creature::attachEffectById(uint16_t id)
+{
+	if (id == 0 || std::find(attachedEffectList.begin(), attachedEffectList.end(), id) != attachedEffectList.end()) {
+		return;
+	}
+	if (!g_game.attachedEffects.getWing(id) && !g_game.attachedEffects.getAura(id) &&
+	    !g_game.attachedEffects.getEffect(id)) {
+		return;
+	}
+
+	attachedEffectList.push_back(id);
+	g_game.sendAttachedEffect(this, id);
+}
+
+void Creature::detachEffectById(uint16_t id)
+{
+	const auto it = std::find(attachedEffectList.begin(), attachedEffectList.end(), id);
+	if (it == attachedEffectList.end()) {
+		return;
+	}
+
+	attachedEffectList.erase(it);
+	g_game.sendDetachEffect(this, id);
+}
 
 std::unordered_set<const Creature*>& Creature::getLiveCreatures()
 {

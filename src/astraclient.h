@@ -19,6 +19,8 @@ inline constexpr std::string_view ECHO_RAID_VISUALS_MARKER = "AstraEchoRaidVisua
 inline constexpr std::string_view REQUIRED_MESSAGE = "This server requires AstraClient.";
 inline constexpr uint8_t SINGLE_CREATURE_MARK_OPCODE = 0x93;
 inline constexpr uint8_t ECHO_RAID_VISUAL_MARK_TYPE = 15;
+inline constexpr uint8_t ATTACHED_EFFECT_OPCODE = 52;
+inline constexpr uint8_t DETACH_EFFECT_OPCODE = 53;
 
 enum Capability : uint8_t {
 	StoreHighlights = 1U << 0,

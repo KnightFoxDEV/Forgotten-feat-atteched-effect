@@ -1171,6 +1171,18 @@ public:
 			client->sendCreatureOutfit(creature, outfit);
 		}
 	}
+	void sendCreatureAttachedEffect(const Creature* creature, uint16_t previousEffect, uint16_t currentEffect)
+	{
+		if (client) {
+			client->sendCreatureAttachedEffect(creature, previousEffect, currentEffect);
+		}
+	}
+	void sendCreatureShader(const Creature* creature, std::string_view shaderName)
+	{
+		if (client) {
+			client->sendCreatureShader(creature, shaderName);
+		}
+	}
 	void sendCreatureChangeVisible(const Creature* creature, bool visible)
 	{
 		if (!client) {
@@ -1196,6 +1208,29 @@ public:
 				client->sendAddCreature(creature, creature->getPosition(), stackpos);
 			} else {
 				client->sendRemoveTileThing(creature->getPosition(), stackpos);
+			}
+		}
+		if (visible) {
+			const Outfit_t& outfit = creature->getCurrentOutfit();
+			client->sendCreatureAttachedEffect(creature, 0, outfit.lookWing);
+			client->sendCreatureAttachedEffect(creature, 0, outfit.lookAura);
+			client->sendCreatureAttachedEffect(creature, 0, outfit.lookEffect);
+			for (const uint16_t effectId : creature->getAttachedEffectList()) {
+				client->sendCreatureAttachedEffect(creature, 0, effectId);
+			}
+			if (!creature->getShader().empty()) {
+				client->sendCreatureShader(creature, creature->getShader());
+			}
+		} else {
+			const Outfit_t& outfit = creature->getCurrentOutfit();
+			client->sendCreatureAttachedEffect(creature, outfit.lookWing, 0);
+			client->sendCreatureAttachedEffect(creature, outfit.lookAura, 0);
+			client->sendCreatureAttachedEffect(creature, outfit.lookEffect, 0);
+			for (const uint16_t effectId : creature->getAttachedEffectList()) {
+				client->sendCreatureAttachedEffect(creature, effectId, 0);
+			}
+			if (!creature->getShader().empty()) {
+				client->sendCreatureShader(creature, {});
 			}
 		}
 	}

@@ -294,7 +294,7 @@ bool IOLoginData::loadPlayerById(Player* player, uint32_t id, bool deferWorldDat
 	return loadPlayer(
 	    player,
 	    db.storeQuery(fmt::format(
-	        "SELECT `id`, `name`, `account_id`, `group_id`, `sex`, `vocation`, `experience`, `level`, `reset`, `maglevel`, `health`, `healthmax`, `blessings`, `blessings1`, `blessings2`, `blessings3`, `blessings4`, `blessings5`, `blessings6`, `blessings7`, `blessings8`, `mana`, `manamax`, `manaspent`, `soul`, `lookbody`, `lookfeet`, `lookhead`, `looklegs`, `looktype`, `lookaddons`, `lookmount`, `currentmount`, `randomizemount`, `posx`, `posy`, `posz`, `cap`, `lastlogin`, `lastlogout`, `lastip`, `conditions`, `skulltime`, `skull`, `town_id`, `balance`, `bonus_rerolls`, `charmpoints`, `task_hunting_points`, `bounty_points`, `soulseals_points`, `has_weekly_expansion`, `xpboost_value`, `xpboost_stamina`, `stamina`, `skill_fist`, `skill_fist_tries`, `skill_club`, `skill_club_tries`, `skill_sword`, `skill_sword_tries`, `skill_axe`, `skill_axe_tries`, `skill_dist`, `skill_dist_tries`, `skill_shielding`, `skill_shielding_tries`, `skill_fishing`, `skill_fishing_tries`, `direction`, `protection_time`, `offlinetraining_time`, `offlinetraining_skill`, `token_protected`, `token_hash`, `save` FROM `players` WHERE `id` = {:d}",
+	        "SELECT `id`, `name`, `account_id`, `group_id`, `sex`, `vocation`, `experience`, `level`, `reset`, `maglevel`, `health`, `healthmax`, `blessings`, `blessings1`, `blessings2`, `blessings3`, `blessings4`, `blessings5`, `blessings6`, `blessings7`, `blessings8`, `mana`, `manamax`, `manaspent`, `soul`, `lookbody`, `lookfeet`, `lookhead`, `looklegs`, `looktype`, `lookaddons`, `lookmount`, `lookwing`, `lookaura`, `lookshader`, `currenteffect`, `currentmount`, `randomizemount`, `posx`, `posy`, `posz`, `cap`, `lastlogin`, `lastlogout`, `lastip`, `conditions`, `skulltime`, `skull`, `town_id`, `balance`, `bonus_rerolls`, `charmpoints`, `task_hunting_points`, `bounty_points`, `soulseals_points`, `has_weekly_expansion`, `xpboost_value`, `xpboost_stamina`, `stamina`, `skill_fist`, `skill_fist_tries`, `skill_club`, `skill_club_tries`, `skill_sword`, `skill_sword_tries`, `skill_axe`, `skill_axe_tries`, `skill_dist`, `skill_dist_tries`, `skill_shielding`, `skill_shielding_tries`, `skill_fishing`, `skill_fishing_tries`, `direction`, `protection_time`, `offlinetraining_time`, `offlinetraining_skill`, `token_protected`, `token_hash`, `save` FROM `players` WHERE `id` = {:d}",
 	        id)), deferWorldData);
 }
 
@@ -304,7 +304,7 @@ bool IOLoginData::loadPlayerByName(Player* player, std::string_view name)
 	return loadPlayer(
 	    player,
 	    db.storeQuery(fmt::format(
-	        "SELECT `id`, `name`, `account_id`, `group_id`, `sex`, `vocation`, `experience`, `level`, `reset`, `maglevel`, `health`, `healthmax`, `blessings`, `blessings1`, `blessings2`, `blessings3`, `blessings4`, `blessings5`, `blessings6`, `blessings7`, `blessings8`, `mana`, `manamax`, `manaspent`, `soul`, `lookbody`, `lookfeet`, `lookhead`, `looklegs`, `looktype`, `lookaddons`, `lookmount`, `currentmount`, `randomizemount`, `posx`, `posy`, `posz`, `cap`, `lastlogin`, `lastlogout`, `lastip`, `conditions`, `skulltime`, `skull`, `town_id`, `balance`, `bonus_rerolls`, `charmpoints`, `task_hunting_points`, `bounty_points`, `soulseals_points`, `has_weekly_expansion`, `xpboost_value`, `xpboost_stamina`, `stamina`, `skill_fist`, `skill_fist_tries`, `skill_club`, `skill_club_tries`, `skill_sword`, `skill_sword_tries`, `skill_axe`, `skill_axe_tries`, `skill_dist`, `skill_dist_tries`, `skill_shielding`, `skill_shielding_tries`, `skill_fishing`, `skill_fishing_tries`, `direction`, `protection_time`, `offlinetraining_time`, `offlinetraining_skill`, `token_protected`, `token_hash`, `save` FROM `players` WHERE `name` = {:s}",
+	        "SELECT `id`, `name`, `account_id`, `group_id`, `sex`, `vocation`, `experience`, `level`, `reset`, `maglevel`, `health`, `healthmax`, `blessings`, `blessings1`, `blessings2`, `blessings3`, `blessings4`, `blessings5`, `blessings6`, `blessings7`, `blessings8`, `mana`, `manamax`, `manaspent`, `soul`, `lookbody`, `lookfeet`, `lookhead`, `looklegs`, `looktype`, `lookaddons`, `lookmount`, `lookwing`, `lookaura`, `lookshader`, `currenteffect`, `currentmount`, `randomizemount`, `posx`, `posy`, `posz`, `cap`, `lastlogin`, `lastlogout`, `lastip`, `conditions`, `skulltime`, `skull`, `town_id`, `balance`, `bonus_rerolls`, `charmpoints`, `task_hunting_points`, `bounty_points`, `soulseals_points`, `has_weekly_expansion`, `xpboost_value`, `xpboost_stamina`, `stamina`, `skill_fist`, `skill_fist_tries`, `skill_club`, `skill_club_tries`, `skill_sword`, `skill_sword_tries`, `skill_axe`, `skill_axe_tries`, `skill_dist`, `skill_dist_tries`, `skill_shielding`, `skill_shielding_tries`, `skill_fishing`, `skill_fishing_tries`, `direction`, `protection_time`, `offlinetraining_time`, `offlinetraining_skill`, `token_protected`, `token_hash`, `save` FROM `players` WHERE `name` = {:s}",
 	        db.escapeString(name))));
 }
 
@@ -536,6 +536,10 @@ bool IOLoginData::loadPlayer(Player* player, DBResult_ptr result, bool deferWorl
 	player->defaultOutfit.lookFeet = result->getNumber<uint16_t>("lookfeet");
 	player->defaultOutfit.lookAddons = result->getNumber<uint16_t>("lookaddons");
 	player->defaultOutfit.lookMount = result->getNumber<uint16_t>("lookmount");
+	player->defaultOutfit.lookWing = result->getNumber<uint16_t>("lookwing");
+	player->defaultOutfit.lookAura = result->getNumber<uint16_t>("lookaura");
+	player->defaultOutfit.lookShader = result->getNumber<uint16_t>("lookshader");
+	player->defaultOutfit.lookEffect = result->getNumber<uint16_t>("currenteffect");
 	player->currentOutfit = player->defaultOutfit;
 	player->currentMount = result->getNumber<uint16_t>("currentmount");
 	player->randomizeMount = result->getNumber<uint8_t>("randomizemount") != 0;
@@ -1200,6 +1204,10 @@ bool IOLoginData::savePlayerQueries(Player* player, const Player::BestiaryDirtyS
 	query << "`looktype` = " << player->defaultOutfit.lookType << ',';
 	query << "`lookaddons` = " << static_cast<uint32_t>(player->defaultOutfit.lookAddons) << ',';
 	query << "`lookmount` = " << player->defaultOutfit.lookMount << ',';
+	query << "`lookwing` = " << player->defaultOutfit.lookWing << ',';
+	query << "`lookaura` = " << player->defaultOutfit.lookAura << ',';
+	query << "`lookshader` = " << player->defaultOutfit.lookShader << ',';
+	query << "`currenteffect` = " << player->defaultOutfit.lookEffect << ',';
 	query << "`currentmount` = " << static_cast<uint16_t>(player->currentMount) << ',';
 	query << "`randomizemount` = " << player->randomizeMount << ",";
 	query << "`maglevel` = " << player->magLevel << ',';

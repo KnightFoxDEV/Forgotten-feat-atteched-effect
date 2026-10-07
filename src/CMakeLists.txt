@@ -2,6 +2,7 @@ set(tfs_SRC
 	${CMAKE_CURRENT_LIST_DIR}/otpch.cpp
 	${CMAKE_CURRENT_LIST_DIR}/account_coins.cpp
 	${CMAKE_CURRENT_LIST_DIR}/actions.cpp
+	${CMAKE_CURRENT_LIST_DIR}/attached_effects.cpp
 	${CMAKE_CURRENT_LIST_DIR}/admin.cpp
 	${CMAKE_CURRENT_LIST_DIR}/ban.cpp
 	${CMAKE_CURRENT_LIST_DIR}/baseevents.cpp

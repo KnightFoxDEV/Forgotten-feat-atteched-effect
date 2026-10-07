@@ -990,6 +990,7 @@ void Game::setGameState(GameState_t newState)
 
 			phaseStart = std::chrono::steady_clock::now();
 			mounts.loadFromXml();
+			attachedEffects.loadFromXml();
 			logStartupPhase("mounts", phaseStart);
 			startupProgress().update(3, 6, "mounts");
 
@@ -6606,6 +6607,7 @@ void Game::internalCreatureChangeOutfit(Creature* creature, const Outfit_t& outf
 		return;
 	}
 
+	const Outfit_t previousOutfit = creature->getCurrentOutfit();
 	creature->setCurrentOutfit(outfit);
 
 	if (creature->isInvisible()) {
@@ -6622,6 +6624,64 @@ void Game::internalCreatureChangeOutfit(Creature* creature, const Outfit_t& outf
 			continue;
 		}
 		p->sendCreatureChangeOutfit(creature, outfit);
+		if (!p->canSeeCreature(creature)) {
+			continue;
+		}
+		const auto* shader = attachedEffects.getShader(outfit.lookShader);
+		const std::string_view shaderName = shader ? std::string_view{shader->name} :
+		                                    (!creature->getPlayer() ? std::string_view{creature->getShader()} : std::string_view{});
+		p->sendCreatureShader(creature, shaderName);
+		p->sendCreatureAttachedEffect(creature, previousOutfit.lookWing, outfit.lookWing);
+		p->sendCreatureAttachedEffect(creature, previousOutfit.lookAura, outfit.lookAura);
+		p->sendCreatureAttachedEffect(creature, previousOutfit.lookEffect, outfit.lookEffect);
+	}
+}
+
+void Game::sendAttachedEffect(const Creature* creature, uint16_t effectId)
+{
+	if (!creature || effectId == 0) {
+		return;
+	}
+
+	SpectatorVec spectators;
+	map.getSpectators(spectators, creature->getPosition(), true, true);
+	for (const auto& spectator : spectators.players()) {
+		Player* player = static_cast<Player*>(spectator.get());
+		if (player->compareInstance(creature->getInstanceID()) && player->canSeeCreature(creature)) {
+			player->sendCreatureAttachedEffect(creature, 0, effectId);
+		}
+	}
+}
+
+void Game::sendDetachEffect(const Creature* creature, uint16_t effectId)
+{
+	if (!creature || effectId == 0) {
+		return;
+	}
+
+	SpectatorVec spectators;
+	map.getSpectators(spectators, creature->getPosition(), true, true);
+	for (const auto& spectator : spectators.players()) {
+		Player* player = static_cast<Player*>(spectator.get());
+		if (player->compareInstance(creature->getInstanceID()) && player->canSeeCreature(creature)) {
+			player->sendCreatureAttachedEffect(creature, effectId, 0);
+		}
+	}
+}
+
+void Game::updateCreatureShader(const Creature* creature)
+{
+	if (!creature) {
+		return;
+	}
+
+	SpectatorVec spectators;
+	map.getSpectators(spectators, creature->getPosition(), true, true);
+	for (const auto& spectator : spectators.players()) {
+		Player* player = static_cast<Player*>(spectator.get());
+		if (player->compareInstance(creature->getInstanceID()) && player->canSeeCreature(creature)) {
+			player->sendCreatureShader(creature, creature->getShader());
+		}
 	}
 }
 
@@ -9394,6 +9454,11 @@ bool Game::reload(ReloadTypes_t reloadType)
 		case RELOAD_TYPE_MOUNTS: {
 			bool result = mounts.reload();
 			if (result) LOG_INFO("Mounts reloaded successfully.");
+			return result;
+		}
+		case RELOAD_TYPE_ATTACHED_EFFECTS: {
+			const bool result = attachedEffects.reload();
+			if (result) LOG_INFO("Attached effects, wings, auras and shaders reloaded successfully.");
 			return result;
 		}
 		case RELOAD_TYPE_MOVEMENTS: {

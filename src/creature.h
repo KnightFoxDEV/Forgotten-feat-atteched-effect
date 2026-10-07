@@ -220,6 +220,11 @@ public:
 	const Outfit_t getCurrentOutfit() const { return currentOutfit; }
 	void setCurrentOutfit(Outfit_t outfit) { currentOutfit = outfit; }
 	const Outfit_t getDefaultOutfit() const { return defaultOutfit; }
+	void attachEffectById(uint16_t id);
+	void detachEffectById(uint16_t id);
+	const std::vector<uint16_t>& getAttachedEffectList() const { return attachedEffectList; }
+	const std::string& getShader() const { return shader; }
+	void setShader(const std::string& shaderName) { shader = shaderName; }
 	bool isInvisible() const;
 	ZoneType_t getZone() const
 	{
@@ -469,6 +474,8 @@ protected:
 	Outfit_t currentOutfit;
 	Outfit_t defaultOutfit;
 	uint16_t currentMount;
+	std::vector<uint16_t> attachedEffectList;
+	std::string shader;
 
 	Position lastPosition;
 	LightInfo internalLight;

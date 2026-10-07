@@ -216,6 +216,8 @@ private:
 	void sendChangeSpeed(const Creature* creature, uint32_t speed);
 	void sendCancelTarget();
 	void sendCreatureOutfit(const Creature* creature, const Outfit_t& outfit);
+	void sendCreatureAttachedEffect(const Creature* creature, uint16_t previousEffect, uint16_t currentEffect);
+	void sendCreatureShader(const Creature* creature, std::string_view shaderName);
 	void sendStats();
 	void sendBasicData();
 	void sendTextMessage(const TextMessage& message);

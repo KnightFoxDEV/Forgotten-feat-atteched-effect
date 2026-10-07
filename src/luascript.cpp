@@ -3004,6 +3004,7 @@ void LuaScriptInterface::registerFunctions()
 	registerEnum(RELOAD_TYPE_MONSTERS);
 	registerEnum(RELOAD_TYPE_OUTFITS);
 	registerEnum(RELOAD_TYPE_MOUNTS);
+	registerEnum(RELOAD_TYPE_ATTACHED_EFFECTS);
 	registerEnum(RELOAD_TYPE_MOVEMENTS);
 	registerEnum(RELOAD_TYPE_NPCS);
 	registerEnum(RELOAD_TYPE_QUESTS);

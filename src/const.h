@@ -871,6 +871,7 @@ enum ReloadTypes_t : uint8_t
 	RELOAD_TYPE_SPELLS,
 	RELOAD_TYPE_TALKACTIONS,
 	RELOAD_TYPE_WEAPONS,
+	RELOAD_TYPE_ATTACHED_EFFECTS,
 };
 
 // OTCv8 features (from src/client/const.h)
@@ -1009,8 +1010,10 @@ enum class GameFeature : uint8_t {
 	AstraStoreBasePrice = 149,
 	AstraBestiaryBannerCreatureData = 151,
 	AstraExtendedSpellIds = 152,
+	OutfitShaders = 106,
+	AttachedEffectOutfit = 153,
 
-	Last = 152
+	Last = 153
 };
 
 enum ContainerSpecialType : uint8_t

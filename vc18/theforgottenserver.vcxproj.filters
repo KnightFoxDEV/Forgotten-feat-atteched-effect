@@ -3,6 +3,7 @@
   <ItemGroup>
     <ClCompile Include="..\src\actions.cpp" />
     <ClCompile Include="..\src\admin.cpp" />
+    <ClCompile Include="..\src\attached_effects.cpp" />
     <ClCompile Include="..\src\ban.cpp" />
     <ClCompile Include="..\src\baseevents.cpp" />
     <ClCompile Include="..\src\bestiary_charm.cpp" />
@@ -96,6 +97,7 @@
     <ClCompile Include="..\src\startup_progress.cpp" />
     <ClCompile Include="..\src\stress_test.cpp" />
     <ClInclude Include="..\src\instance_utils.h" />
+    <ClInclude Include="..\src\attached_effects.h" />
     <ClCompile Include="..\src\protocolspectator.cpp" />
     <ClCompile Include="..\src\save_manager.cpp" />
     <ClCompile Include="..\src\thread_pool.cpp" />

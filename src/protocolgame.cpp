@@ -2411,6 +2411,26 @@ void ProtocolGame::parseSetOutfit(NetworkMessage& msg)
 		newOutfit.lookFamiliar =
 		    familiar && requestedFamiliar == familiar->lookType ? requestedFamiliar : 0;
 	}
+	if (isAstraClient && getVersion() == 860) {
+		// The Astra attached-effect fields above are authoritative, including zero
+		// (None). The legacy wings/aura fields are still present in this packet for
+		// wire compatibility, but must not restore an old attached effect when the
+		// selected attached ID is zero.
+		newOutfit.lookWing = msg.get<uint16_t>();
+		newOutfit.lookAura = msg.get<uint16_t>();
+		newOutfit.lookEffect = msg.get<uint16_t>();
+		msg.get<uint16_t>(); // legacy wings; do not override attached lookWing
+		msg.get<uint16_t>(); // legacy aura; do not override attached lookAura
+		const auto shaderName = msg.getString();
+		const auto canUse = [this](const AttachedEffectInfo* option) {
+			return option && (!option->premium || player->isPremium() || player->isAccessPlayer());
+		};
+		const auto* shader = g_game.attachedEffects.getShaderByName(shaderName);
+		newOutfit.lookShader = canUse(shader) ? shader->id : 0;
+		if (!canUse(g_game.attachedEffects.getWing(newOutfit.lookWing))) newOutfit.lookWing = 0;
+		if (!canUse(g_game.attachedEffects.getAura(newOutfit.lookAura))) newOutfit.lookAura = 0;
+		if (!canUse(g_game.attachedEffects.getEffect(newOutfit.lookEffect))) newOutfit.lookEffect = 0;
+	}
 	g_game.playerChangeOutfit(player->getID(), newOutfit);
 }
 
@@ -3060,6 +3080,43 @@ void ProtocolGame::sendCreatureOutfit(const Creature* creature, const Outfit_t& 
 	msg.addByte(0x8E);
 	msg.add<uint32_t>(creature->getID());
 	AddOutfit(msg, outfit);
+	writeToOutputBuffer(msg);
+}
+
+void ProtocolGame::sendCreatureAttachedEffect(const Creature* creature, uint16_t previousEffect, uint16_t currentEffect)
+{
+	if (!isAstraClient || getVersion() != 860 || previousEffect == currentEffect) {
+		return;
+	}
+	if (previousEffect != 0) {
+		NetworkMessage detach;
+		detach.addByte(AstraClient::DETACH_EFFECT_OPCODE);
+		detach.add<uint32_t>(creature->getID());
+		detach.add<uint16_t>(previousEffect);
+		writeToOutputBuffer(detach);
+	}
+	const bool knownAttachedEffect = g_game.attachedEffects.getWing(currentEffect) ||
+	                                 g_game.attachedEffects.getAura(currentEffect) ||
+	                                 g_game.attachedEffects.getEffect(currentEffect);
+	if (currentEffect != 0 && knownAttachedEffect) {
+		NetworkMessage attach;
+		attach.addByte(AstraClient::ATTACHED_EFFECT_OPCODE);
+		attach.add<uint32_t>(creature->getID());
+		attach.add<uint16_t>(currentEffect);
+		writeToOutputBuffer(attach);
+	}
+}
+
+void ProtocolGame::sendCreatureShader(const Creature* creature, std::string_view shaderName)
+{
+	if (!isAstraClient || getVersion() != 860 || !canSee(creature)) {
+		return;
+	}
+
+	NetworkMessage msg;
+	msg.addByte(0x36); // Mehah-compatible GameServerCreatureShader
+	msg.add<uint32_t>(creature->getID());
+	msg.addString(shaderName);
 	writeToOutputBuffer(msg);
 }
 
@@ -4777,6 +4834,23 @@ void ProtocolGame::sendMapDescription(const Position& pos)
 	writeToOutputBuffer(msg);
 	sendVisiblePlayerVocations(pos);
 	sendVisibleEchoRaidVisuals(pos);
+	if (isAstraClient && getVersion() == 860) {
+		SpectatorVec spectators;
+		g_game.map.getSpectators(spectators, pos, true, false);
+		for (const auto& creature : spectators) {
+			if (!canSee(creature.get())) continue;
+			const Outfit_t& outfit = creature->getCurrentOutfit();
+			sendCreatureAttachedEffect(creature.get(), 0, outfit.lookWing);
+			sendCreatureAttachedEffect(creature.get(), 0, outfit.lookAura);
+			sendCreatureAttachedEffect(creature.get(), 0, outfit.lookEffect);
+			for (const uint16_t effectId : creature->getAttachedEffectList()) {
+				sendCreatureAttachedEffect(creature.get(), 0, effectId);
+			}
+			if (!creature->getShader().empty()) {
+				sendCreatureShader(creature.get(), creature->getShader());
+			}
+		}
+	}
 }
 
 void ProtocolGame::refreshWorldView()
@@ -4961,6 +5035,16 @@ void ProtocolGame::sendAddCreature(const Creature* creature, const Position& pos
 			auto [known, removedKnown] = isKnownCreature(creature->getID());
 			AddCreature(msg, creature, known, removedKnown);
 			writeToOutputBuffer(msg);
+			const Outfit_t& outfit = creature->getCurrentOutfit();
+			sendCreatureAttachedEffect(creature, 0, outfit.lookWing);
+			sendCreatureAttachedEffect(creature, 0, outfit.lookAura);
+			sendCreatureAttachedEffect(creature, 0, outfit.lookEffect);
+			for (const uint16_t effectId : creature->getAttachedEffectList()) {
+				sendCreatureAttachedEffect(creature, 0, effectId);
+			}
+			if (!creature->getShader().empty()) {
+				sendCreatureShader(creature, creature->getShader());
+			}
 			sendCreatureSquare(creature, player->getCreatureSquare(creature));
 			sendCreatureVocation(creature);
 			sendCreatureEchoRaidVisual(creature, true);
@@ -5409,6 +5493,12 @@ void ProtocolGame::sendOutfitWindow()
 	if (currentMount) {
 		currentOutfit.lookMount = currentMount->clientId;
 	}
+	if (isAstraClient && getVersion() == 860) {
+		if (!g_game.attachedEffects.getWing(currentOutfit.lookWing)) currentOutfit.lookWing = 0;
+		if (!g_game.attachedEffects.getAura(currentOutfit.lookAura)) currentOutfit.lookAura = 0;
+		if (!g_game.attachedEffects.getEffect(currentOutfit.lookEffect)) currentOutfit.lookEffect = 0;
+		if (!g_game.attachedEffects.getShader(currentOutfit.lookShader)) currentOutfit.lookShader = 0;
+	}
 
 	AddOutfit(msg, currentOutfit);
 	if (isAstraClient || isFonticakClient) {
@@ -5417,6 +5507,27 @@ void ProtocolGame::sendOutfitWindow()
 			currentOutfit.lookFamiliar = 0;
 		}
 		msg.add<uint16_t>(currentOutfit.lookFamiliar);
+	}
+	if (isAstraClient && getVersion() == 860) {
+		const auto appendOptions = [this, &msg](const auto& options) {
+			std::vector<const AttachedEffectInfo*> visible;
+			for (const auto& entry : options) {
+				const auto& option = entry.second;
+				if (!option.premium || player->isPremium() || player->isAccessPlayer()) visible.push_back(&option);
+			}
+			const auto count = std::min<std::size_t>(visible.size(), std::numeric_limits<uint8_t>::max());
+			msg.addByte(static_cast<uint8_t>(count));
+			for (std::size_t i = 0; i < count; ++i) {
+				msg.add<uint16_t>(visible[i]->id);
+				msg.addString(visible[i]->name);
+			}
+		};
+		msg.add<uint16_t>(currentOutfit.lookWing);
+		msg.add<uint16_t>(currentOutfit.lookAura);
+		msg.add<uint16_t>(currentOutfit.lookEffect);
+		appendOptions(g_game.attachedEffects.getWings());
+		appendOptions(g_game.attachedEffects.getAuras());
+		appendOptions(g_game.attachedEffects.getEffects());
 	}
 
 	std::vector<ProtocolOutfit> protocolOutfits;
@@ -5502,6 +5613,25 @@ void ProtocolGame::sendOutfitWindow()
 			msg.addString(familiar->name);
 			msg.addByte(0);
 		}
+	}
+
+	if (isAstraClient && getVersion() == 860) {
+		const auto appendOptions = [this, &msg](const auto& options) {
+			std::vector<const AttachedEffectInfo*> visible;
+			for (const auto& entry : options) {
+				const auto& option = entry.second;
+				if (!option.premium || player->isPremium() || player->isAccessPlayer()) visible.push_back(&option);
+			}
+			const auto count = std::min<std::size_t>(visible.size(), std::numeric_limits<uint8_t>::max());
+			msg.addByte(static_cast<uint8_t>(count));
+			for (std::size_t i = 0; i < count; ++i) {
+				msg.add<uint16_t>(visible[i]->id);
+				msg.addString(visible[i]->name);
+			}
+		};
+		appendOptions(g_game.attachedEffects.getWings());
+		appendOptions(g_game.attachedEffects.getAuras());
+		appendOptions(g_game.attachedEffects.getShaders());
 	}
 
 	writeToOutputBuffer(msg);
@@ -6378,6 +6508,14 @@ void ProtocolGame::AddOutfit(NetworkMessage& msg, const Outfit_t& outfit)
 	if (isOTC || getVersion() != 861) {
 		msg.add<uint16_t>(outfit.lookMount);
 	}
+	if (isAstraClient && getVersion() == 860) {
+		// Wings and auras are rendered as attached effects by Astra. Keep the
+		// legacy DAT outfit fields empty to avoid drawing a second, unrelated sprite.
+		msg.add<uint16_t>(0);
+		msg.add<uint16_t>(0);
+		const auto* shader = g_game.attachedEffects.getShader(outfit.lookShader);
+		msg.addString(shader ? std::string_view{shader->name} : std::string_view{});
+	}
 }
 
 void ProtocolGame::AddWorldLight(NetworkMessage& msg, LightInfo lightInfo)
@@ -6659,6 +6797,11 @@ void ProtocolGame::sendFeatures(bool advertiseAstraItemState)
 		features[GameFeature::ExperienceBonus] = true;
 	}
 	if (isAstraClient) {
+		if (getVersion() == 860) {
+			features[GameFeature::WingsAndAura] = true;
+			features[GameFeature::OutfitShaders] = true;
+			features[GameFeature::AttachedEffectOutfit] = true;
+		}
 		features[GameFeature::PlayerFamiliars] = true;
 		features[GameFeature::AstraCreatureIcons] = true;
 		features[GameFeature::AstraQuiverCountU16] = true;

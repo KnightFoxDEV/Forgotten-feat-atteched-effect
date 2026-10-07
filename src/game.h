@@ -5,6 +5,7 @@
 #define FS_GAME_H
 
 #include "account.h"
+#include "attached_effects.h"
 #include "combat.h"
 #include "container.h"
 #include "groups.h"
@@ -463,6 +464,9 @@ public:
 	void playerSay(uint32_t playerId, uint16_t channelId, SpeakClasses type, std::string_view receiver,
 	               std::string_view text, bool forceCastOnFoot = false);
 	void playerChangeOutfit(uint32_t playerId, Outfit_t outfit, bool randomizeMount = false);
+	void sendAttachedEffect(const Creature* creature, uint16_t effectId);
+	void sendDetachEffect(const Creature* creature, uint16_t effectId);
+	void updateCreatureShader(const Creature* creature);
 	void playerInviteToParty(uint32_t playerId, uint32_t invitedId);
 	void playerJoinParty(uint32_t playerId, uint32_t leaderId);
 	void playerRevokePartyInvitation(uint32_t playerId, uint32_t invitedId);
@@ -609,6 +613,7 @@ public:
 	Map map;
 	Raids raids;
 	Mounts mounts;
+	AttachedEffects attachedEffects;
 
 	std::unordered_set<Position, PositionHasher> getTilesToClean() const { return tilesToClean; }
 	bool isTileInCleanList(Tile* tile)

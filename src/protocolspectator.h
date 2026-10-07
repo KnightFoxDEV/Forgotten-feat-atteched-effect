@@ -518,6 +518,30 @@ class ProtocolSpectator {
                 spy->sendCreatureOutfit(creature, outfit);
         }
 
+        void sendCreatureAttachedEffect(const Creature *creature, uint16_t previousEffect, uint16_t currentEffect) {
+            auto o = owner.lock();
+            if (o)
+                o->sendCreatureAttachedEffect(creature, previousEffect, currentEffect);
+
+            for (auto &it : spectators)
+                it->sendCreatureAttachedEffect(creature, previousEffect, currentEffect);
+
+            for (auto &spy : spyClients_)
+                spy->sendCreatureAttachedEffect(creature, previousEffect, currentEffect);
+        }
+
+        void sendCreatureShader(const Creature *creature, std::string_view shaderName) {
+            auto o = owner.lock();
+            if (o)
+                o->sendCreatureShader(creature, shaderName);
+
+            for (auto &it : spectators)
+                it->sendCreatureShader(creature, shaderName);
+
+            for (auto &spy : spyClients_)
+                spy->sendCreatureShader(creature, shaderName);
+        }
+
         void sendStats() {
             auto o = owner.lock();
             if (o)
